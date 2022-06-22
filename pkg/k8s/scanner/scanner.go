@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"io"
+	"sync"
 
 	"github.com/cheggaaa/pb/v3"
 	"golang.org/x/exp/slices"
@@ -26,9 +27,9 @@ func NewScanner(cluster string, runner cmd.Runner, opt cmd.Option) *Scanner {
 	return &Scanner{cluster, runner, opt}
 }
 
-func (s *Scanner) Scan(ctx context.Context, artifacts []*artifacts.Artifact) (report.Report, error) {
+func (s *Scanner) Scan(ctx context.Context, allArtifacts []*artifacts.Artifact) (report.Report, error) {
 	// progress bar
-	bar := pb.StartNew(len(artifacts))
+	bar := pb.StartNew(len(allArtifacts))
 	if s.opt.NoProgress {
 		bar.SetWriter(io.Discard)
 	}
@@ -53,27 +54,30 @@ func (s *Scanner) Scan(ctx context.Context, artifacts []*artifacts.Artifact) (re
 		}
 	}()
 
+	wg := &sync.WaitGroup{}
+	input := make(chan *artifacts.Artifact)
+	output := make(chan scanResult, len(allArtifacts))
+
+	// TODO: do it per cpu
+	for i := 0; i <= 3; i++ {
+		go s.scan(ctx, wg, input, output)
+	}
+
 	// Loops once over all artifacts, and execute scanners as necessary. Not every artifacts has an image,
 	// so image scanner is not always executed.
-	for _, artifact := range artifacts {
+	for _, artifact := range allArtifacts {
 		bar.Increment()
-
-		if slices.Contains(s.opt.SecurityChecks, types.SecurityCheckVulnerability) {
-			resources, err := s.scanVulns(ctx, artifact)
-			if err != nil {
-				return report.Report{}, xerrors.Errorf("scanning vulnerabilities error: %w", err)
-			}
-			vulns = append(vulns, resources...)
-		}
-
-		if slices.Contains(s.opt.SecurityChecks, types.SecurityCheckConfig) {
-			resource, err := s.scanMisconfigs(ctx, artifact)
-			if err != nil {
-				return report.Report{}, xerrors.Errorf("scanning misconfigurations error: %w", err)
-			}
-			misconfigs = append(misconfigs, resource)
-		}
+		input <- artifact
 	}
+	close(input)
+
+	for scanResult := range output {
+		vulns = append(vulns, scanResult.vulns...)
+		misconfigs = append(misconfigs, scanResult.misconfig)
+	}
+	close(output)
+
+	wg.Wait()
 
 	return report.Report{
 		SchemaVersion:     0,
@@ -81,6 +85,40 @@ func (s *Scanner) Scan(ctx context.Context, artifacts []*artifacts.Artifact) (re
 		Vulnerabilities:   vulns,
 		Misconfigurations: misconfigs,
 	}, nil
+}
+
+type scanResult struct {
+	vulns     []report.Resource
+	misconfig report.Resource
+}
+
+func (s *Scanner) scan(ctx context.Context, wg *sync.WaitGroup, input <-chan *artifacts.Artifact, output chan<- scanResult) {
+	wg.Add(1)
+	defer wg.Done()
+
+	for artifact := range input {
+		var result scanResult
+
+		if slices.Contains(s.opt.SecurityChecks, types.SecurityCheckVulnerability) {
+			resources, err := s.scanVulns(ctx, artifact)
+			if err != nil {
+				//return report.Report{}, xerrors.Errorf("scanning vulnerabilities error: %w", err)
+			}
+
+			result.vulns = resources
+		}
+
+		if slices.Contains(s.opt.SecurityChecks, types.SecurityCheckConfig) {
+			resource, err := s.scanMisconfigs(ctx, artifact)
+			if err != nil {
+				//return report.Report{}, xerrors.Errorf("scanning misconfigurations error: %w", err)
+			}
+
+			result.misconfig = resource
+		}
+
+		output <- result
+	}
 }
 
 func (s *Scanner) scanVulns(ctx context.Context, artifact *artifacts.Artifact) ([]report.Resource, error) {
