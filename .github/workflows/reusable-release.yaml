@@ -30,7 +30,7 @@ jobs:
         uses: sigstore/cosign-installer@204a51a57a74d190b284a0ce69b44bc37201f343
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         id: buildx
