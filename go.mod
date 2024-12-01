@@ -37,7 +37,7 @@ require (
 	github.com/cheggaaa/pb/v3 v3.1.2
 	github.com/containerd/containerd v1.7.0
 	github.com/docker/docker v23.0.5+incompatible
-	github.com/docker/go-connections v0.4.0
+	github.com/docker/go-connections v0.5.0
 	github.com/fatih/color v1.14.1
 	github.com/go-git/go-git/v5 v5.6.1
 	github.com/go-openapi/runtime v0.26.0
