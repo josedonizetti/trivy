@@ -96,7 +96,7 @@ require (
 	golang.org/x/crypto v0.8.0
 	golang.org/x/exp v0.0.0-20230124195608-d38c7dcee874
 	golang.org/x/mod v0.10.0
-	golang.org/x/sync v0.1.0
+	golang.org/x/sync v0.10.0
 	golang.org/x/term v0.7.0
 	golang.org/x/text v0.9.0
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
